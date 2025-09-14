@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Шахматы</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-900">
+    <div id="root"></div>
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        // ♟️ Разные фигурки для тем (как у тебя)
+        const themePieces = {
+            Classic: {
+                wK: "♔", wQ: "♕", wR: "♖", wB: "♗", wN: "♘", wP: "♙",
+                bK: "♚", bQ: "♛", bR: "♜", bB: "♝", bN: "♞", bP: "♟",
+            },
+            Emerald: {
+                wK: "♚", wQ: "♛", wR: "♜", wB: "♝", wN: "♞", wP: "♟",
+                bK: "♔", bQ: "♕", bR: "♖", bB: "♗", bN: "♘", bP: "♙",
+            },
+            Ocean: {
+                wK: "🧜‍♂️", wQ: "🧜‍♀️", wR: "🌊", wB: "🐚", wN: "🐬", wP: "🐟",
+                bK: "🦑", bQ: "🦈", bR: "⚓", bB: "🐡", bN: "🐋", bP: "🦀",
+            },
+            Purple: {
+                wK: "👑", wQ: "💎", wR: "🏰", wB: "🔮", wN: "🐉", wP: "⭐",
+                bK: "☠️", bQ: "🌙", bR: "🪦", bB: "👻", bN: "🦇", bP: "🕸️",
+            }
+        };
+
+        const themes = [
+            {
+                name: "Classic",
+                light: "linear-gradient(135deg, #f0d9b5, #fff5e1)",
+                dark: "linear-gradient(135deg, #b58863, #8b5e3c)",
+                pieceSet: themePieces.Classic,
+            },
+            {
+                name: "Emerald",
+                light: "linear-gradient(135deg, #d1fae5, #a7f3d0)",
+                dark: "linear-gradient(135deg, #10b981, #065f46)",
+                pieceSet: themePieces.Emerald,
+            },
+            {
+                name: "Ocean",
+                light: "linear-gradient(135deg, #e0f2fe, #bae6fd)",
+                dark: "linear-gradient(135deg, #0284c7, #075985)",
+                pieceSet: themePieces.Ocean,
+            },
+            {
+                name: "Purple",
+                light: "linear-gradient(135deg, #ede9fe, #ddd6fe)",
+                dark: "linear-gradient(135deg, #7c3aed, #4c1d95)",
+                pieceSet: themePieces.Purple,
+            }
+        ];
+
+        const initialBoard = () => {
+            const empty = Array(8).fill(null).map(() => Array(8).fill(null));
+            const backRank = ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'];
+            for (let i = 0; i < 8; i++) empty[0][i] = { color: 'b', kind: backRank[i] };
+            for (let i = 0; i < 8; i++) empty[1][i] = { color: 'b', kind: 'P' };
+            for (let i = 0; i < 8; i++) empty[6][i] = { color: 'w', kind: 'P' };
+            for (let i = 0; i < 8; i++) empty[7][i] = { color: 'w', kind: backRank[i] };
+            return empty;
+        };
+
+        const inBounds = (x, y) => x >= 0 && x < 8 && y >= 0 && y < 8;
+
+        function getMoves(board, r, c) {
+            const cell = board[r][c];
+            if (!cell) return [];
+            const { color, kind } = cell;
+            const dir = color === 'w' ? -1 : 1;
+            const moves = [];
+            const pushIf = (x, y) => {
+                if (!inBounds(x, y)) return;
+                const target = board[x][y];
+                if (!target || target.color !== color) moves.push([x, y]);
+            };
+
+            if (kind === 'P') {
+                const one = r + dir; const two = r + dir * 2;
+                if (inBounds(one, c) && !board[one][c]) {
+                    moves.push([one, c]);
+                    const startRow = (color === 'w' ? 6 : 1);
+                    if (r === startRow && inBounds(two, c) && !board[two][c]) moves.push([two, c]);
+                }
+                for (let dy of [-1, 1]) {
+                    const x = r + dir, y = c + dy;
+                    if (inBounds(x, y) && board[x][y] && board[x][y].color !== color) moves.push([x, y]);
+                }
+            } else if (kind === 'N') {
+                [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]].forEach(([dx, dy]) => pushIf(r + dx, c + dy));
+            } else if (kind === 'B' || kind === 'R' || kind === 'Q') {
+                const directions = [];
+                if (kind === 'B' || kind === 'Q') directions.push([-1, -1], [-1, 1], [1, -1], [1, 1]);
+                if (kind === 'R' || kind === 'Q') directions.push([-1, 0], [1, 0], [0, -1], [0, 1]);
+                for (let [dx, dy] of directions) {
+                    let x = r + dx, y = c + dy;
+                    while (inBounds(x, y)) {
+                        if (!board[x][y]) { moves.push([x, y]); x += dx; y += dy; continue; }
+                        if (board[x][y].color !== color) moves.push([x, y]);
+                        break;
+                    }
+                }
+            } else if (kind === 'K') {
+                for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) if (dx || dy) pushIf(r + dx, c + dy);
+            }
+            return moves;
+        }
+
+        const cloneBoard = (board) => board.map(row => row.map(cell => cell ? { ...cell } : null));
+
+        function isCheck(board, color) {
+            let kingPos = null;
+            for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+                if (board[r][c]?.kind === 'K' && board[r][c].color === color) { kingPos = [r, c]; break; }
+            }
+            if (!kingPos) return false;
+            for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+                const piece = board[r][c];
+                if (piece && piece.color !== color) {
+                    const moves = getMoves(board, r, c);
+                    if (moves.some(([x, y]) => x === kingPos[0] && y === kingPos[1])) return true;
+                }
+            }
+            return false;
+        }
+
+        function isCheckmate(board, color) {
+            if (!isCheck(board, color)) return false;
+            for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+                const piece = board[r][c];
+                if (piece && piece.color === color) {
+                    const moves = getMoves(board, r, c);
+                    for (let [x, y] of moves) {
+                        const newBoard = cloneBoard(board);
+                        newBoard[x][y] = newBoard[r][c];
+                        newBoard[r][c] = null;
+                        if (!isCheck(newBoard, color)) return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function ChessGame() {
+            const [board, setBoard] = React.useState(initialBoard());
+            const [turn, setTurn] = React.useState('w');
+            const [selected, setSelected] = React.useState(null);
+            const [history, setHistory] = React.useState([]);
+            const [themeIndex, setThemeIndex] = React.useState(0);
+            const [statusMessage, setStatusMessage] = React.useState("");
+            const [isCheckmateMsg, setIsCheckmateMsg] = React.useState(false);
+
+            // ref для таймаута шаха
+            const checkTimeoutRef = React.useRef(null);
+
+            const theme = themes[themeIndex];
+
+            const pieceToDisplay = (p) => {
+                if (!p) return "";
+                return theme.pieceSet[p.color + p.kind] || "";
+            };
+
+            const legalTargets = React.useMemo(() => {
+                if (!selected) return [];
+                const [r, c] = selected;
+                return getMoves(board, r, c).map(([x, y]) => `${x},${y}`);
+            }, [board, selected]);
+
+            // Блокировка кликов после мата
+            const isGameOver = isCheckmateMsg;
+
+            const onSquareClick = (r, c) => {
+                if (isGameOver) return; // блокируем ходы после мата
+                const piece = board[r][c];
+                if (selected) {
+                    const [sr, sc] = selected;
+                    const allowed = legalTargets.includes(`${r},${c}`);
+                    if (allowed) {
+                        // запомним, кто стоял на целевой клетке (чтобы отследить съедение короля)
+                        const capturedPiece = board[r][c] ? { ...board[r][c] } : null;
+
+                        const newBoard = cloneBoard(board);
+                        newBoard[r][c] = newBoard[sr][sc];
+                        newBoard[sr][sc] = null;
+                        if (newBoard[r][c].kind === 'P' && (r === 0 || r === 7)) newBoard[r][c].kind = 'Q';
+
+                        // обновляем историю
+                        setHistory(h => [...h, `${pieceToDisplay(newBoard[r][c])} → ${String.fromCharCode(97 + c)}${8 - r}`]);
+
+                        // если съели короля — это мгновенная победа
+                        const nextTurn = turn === 'w' ? 'b' : 'w';
+                        if (capturedPiece && capturedPiece.kind === 'K') {
+                            setBoard(newBoard);
+                            setStatusMessage(`Мат! Победили ${turn === "w" ? "Белые" : "Чёрные"}`);
+                            setIsCheckmateMsg(true);
+                            setTurn(nextTurn);
+                            // очистим возможные таймауты шаха
+                            if (checkTimeoutRef.current) { clearTimeout(checkTimeoutRef.current); checkTimeoutRef.current = null; }
+                            setSelected(null);
+                            return;
+                        }
+
+                        // иначе — обычная проверка шах/мат
+                        const checkmate = isCheckmate(newBoard, nextTurn);
+                        const check = isCheck(newBoard, nextTurn);
+
+                        setBoard(newBoard);
+                        setSelected(null);
+
+                        if (checkmate) {
+                            setStatusMessage(`Мат! Победили ${turn === "w" ? "Белые" : "Чёрные"}`);
+                            setIsCheckmateMsg(true);
+                        } else if (check) {
+                            // авто-скрытие шаха через 2 секунды
+                            setStatusMessage("Вам шах!");
+                            setIsCheckmateMsg(false);
+                            if (checkTimeoutRef.current) { clearTimeout(checkTimeoutRef.current); checkTimeoutRef.current = null; }
+                            checkTimeoutRef.current = setTimeout(() => {
+                                setStatusMessage("");
+                                checkTimeoutRef.current = null;
+                            }, 2000);
+                        } else {
+                            setStatusMessage("");
+                            setIsCheckmateMsg(false);
+                        }
+
+                        setTurn(nextTurn);
+                    } else {
+                        // если клик по своей фигуре — смена выделения
+                        if (piece && piece.color === turn) setSelected([r, c]);
+                        else setSelected(null);
+                    }
+                } else {
+                    if (piece && piece.color === turn) setSelected([r, c]);
+                }
+            };
+
+            const reset = () => {
+                // очистка таймаута
+                if (checkTimeoutRef.current) { clearTimeout(checkTimeoutRef.current); checkTimeoutRef.current = null; }
+                setBoard(initialBoard());
+                setTurn('w');
+                setSelected(null);
+                setHistory([]);
+                setStatusMessage("");
+                setIsCheckmateMsg(false);
+            };
+
+            return (
+                <div className="p-6 min-h-screen flex items-start justify-center bg-gradient-to-br from-gray-900 to-gray-800 font-sans">
+                    <div className="max-w-5xl w-full grid grid-cols-3 gap-6">
+
+                        {/* Доска */}
+                        <div className="col-span-2">
+                            <div className="p-4 rounded-xl shadow-xl bg-white/5 relative">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h2 className="text-white text-2xl font-semibold">VSCode Chess</h2>
+                                    <div className="text-sm text-gray-200">Ход: <span className="font-bold">{turn === 'w' ? 'Белые' : 'Чёрные'}</span></div>
+                                </div>
+
+                                <div className="grid grid-cols-8 border rounded-md overflow-hidden" style={{ width: 'min(640px, 90vw)' }}>
+                                    {board.map((row, r) => row.map((cell, c) => {
+                                        const isLight = (r + c) % 2 === 0;
+                                        const isSelected = selected && selected[0] === r && selected[1] === c;
+                                        const isTarget = legalTargets.includes(`${r},${c}`);
+                                        const kingInCheck = cell && cell.kind === 'K' && isCheck(board, cell.color); // подсветка короля, если он в шахе
+                                        return (
+                                            <div key={`${r}-${c}`} onClick={() => onSquareClick(r, c)}
+                                                className="relative flex items-center justify-center cursor-pointer select-none aspect-square transition-all"
+                                                style={{
+                                                    background: isLight ? themes[themeIndex].light : themes[themeIndex].dark,
+                                                    outline: isSelected ? '3px solid rgba(99,102,241,0.8)' : undefined,
+                                                    boxShadow: kingInCheck ? '0 0 0 3px rgba(255,0,64,0.45) inset' : undefined
+                                                }}>
+                                                {cell && (
+                                                    <div className="text-5xl">
+                                                        {pieceToDisplay(cell)}
+                                                    </div>
+                                                )}
+                                                {isTarget && <div className="absolute w-4 h-4 rounded-full bg-emerald-500/85"></div>}
+                                            </div>
+                                        )
+                                    }))}
+                                </div>
+
+                                <div className="mt-4 flex gap-2 items-center">
+                                    <button onClick={reset} className="px-3 py-1 rounded-lg bg-white/10 text-white">Reset</button>
+                                    <select
+                                        value={themeIndex}
+                                        onChange={(e) => setThemeIndex(parseInt(e.target.value))}
+                                        className="px-3 py-1 rounded-lg bg-white/10 text-white cursor-pointer"
+                                    >
+                                        {themes.map((t, i) => (
+                                            <option key={i} value={i}>{t.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* 🟣 Сообщение */}
+                                {statusMessage && (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-xl">
+                                        <div className={`text-3xl font-bold text-white p-6 rounded-xl shadow-2xl ${isCheckmateMsg ? 'bg-gradient-to-r from-red-600 to-rose-500' : 'bg-gradient-to-r from-purple-500 to-indigo-600'} animate-pulse`}>
+                                            {statusMessage}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* История */}
+                        <div className="col-span-1">
+                            <div className="p-4 rounded-xl shadow-xl bg-white/5 h-full">
+                                <h3 className="text-white font-semibold mb-2">Move History</h3>
+                                <div className="h-96 overflow-auto text-sm text-gray-200 p-2 bg-black/20 rounded">
+                                    {history.length === 0 && <div className="text-gray-400">No moves yet</div>}
+                                    {history.map((h, i) => (
+                                        <div key={i} className="border-b border-white/5 py-1">{i + 1}. {h}</div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ChessGame />);
+    </script>
+</body>
+
+</html>
